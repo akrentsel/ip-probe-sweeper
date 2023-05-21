@@ -2,26 +2,21 @@
 package main
 
 import (
+	"flag"
 	"fmt"
-	"io/ioutil"
 	"os/exec"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/seancfoley/ipaddress-go/ipaddr"
-	"k8s.io/klog/v2"
 )
-
-// Const for how many threads to use.
-const numThreads = 1000
 
 // Prober is a struct that contains the information needed to probe a host.
 type Prober struct {
 	addrCh chan string
 	// Timeout is the amount of time to wait for a response from a host.
-	Timeout int
+	Timeout time.Duration
 	// Threads is the number of threads to use when probing.
 	Threads int
 	// Verbose is a flag that determines whether or not to print the results of the probe.
@@ -32,7 +27,7 @@ type Prober struct {
 }
 
 // NewProber creates a new Prober struct with the given hosts, timeout, and threads.
-func NewProber(addrCh chan string, timeout int, threads int, verbose bool) *Prober {
+func NewProber(addrCh chan string, timeout time.Duration, threads int, verbose bool) *Prober {
 	return &Prober{addrCh, timeout, threads, verbose, 0, 0}
 }
 
@@ -76,9 +71,10 @@ func (p *Prober) Probe() {
 // ping attempts to ping the given host.
 // If the host is pingable, the output will be a string containing the output of the ping command.
 // If the host is not pingable, the output will be an empty string.
-func ping(host string, timeout int) string {
+func ping(host string, timeout time.Duration) string {
 	// Create the command to ping the host.
-	cmd := exec.Command("ping", "-c", "1", "-W", strconv.Itoa(timeout), host)
+
+	cmd := exec.Command("ping", "-c", "1", "-i", fmt.Sprintf("%.2f", timeout.Seconds()), host)
 	// Run the command.
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -106,25 +102,29 @@ func GetIPsFromCIDR(cidr string, addrCh chan string) {
 }
 
 func (p *Prober) ReportProgress() {
-	fmt.Printf("%.2f (Reachable: %d, Unreachable: %d)\n", float64(p.CountReachable)/float64(p.CountReachable+p.CountUnreachable)*100, p.CountReachable, p.CountUnreachable)
+	fmt.Printf("%.2f%% (Reachable: %d, Unreachable: %d)\n", float64(p.CountReachable)/float64(p.CountReachable+p.CountUnreachable)*100, p.CountReachable, p.CountUnreachable)
 }
 
-// main is the entry point of the program.
 func main() {
-	// Turn off klog info logs.
-	klog.SetOutputBySeverity("INFO", ioutil.Discard)
+	cidrAddr := flag.String("cidr", "", "The address range to ping in CIDR format, i.e. 1.2.0.0/16. Make sure only mask bits are set in the host portion of the address.")
+	numThreads := flag.Int("threads", 1000, "The number of threads to use when pinging.")
+	timeout := flag.Duration("timeout", 300*time.Millisecond, "The amount of time to wait for a response from a host.")
+	verbose := flag.Bool("verbose", false, "Whether or not to print the results of the ping.")
+	progressFrequency := flag.Duration("progress_freq", 1*time.Second, "How often to print the progress of the scan.")
+	flag.Parse()
 
-	// Make a channel to hold the IP addresses. Buffer up to 1000 addresses.
-	addrCh := make(chan string, numThreads)
+	fmt.Printf("Starting sweep for CIDR Range %s\n", *cidrAddr)
 
-	// IPs of interest: 34.128.0.0/10
+	// Make a channel to hold the IP addresses. Buffer up to 100 addresses.
+	addrCh := make(chan string, 100)
+
 	// Genereate all of the IP addresses in the CIDR and send them to the channel.
-	go GetIPsFromCIDR("34.133.0.0/16", addrCh)
+	go GetIPsFromCIDR(*cidrAddr, addrCh)
 
 	// Create a new Prober struct.
-	prober := NewProber(addrCh, 1, numThreads, false)
+	prober := NewProber(addrCh, *timeout, *numThreads, *verbose)
 
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(*progressFrequency)
 	go func() {
 		for range ticker.C {
 			prober.ReportProgress()
