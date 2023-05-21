@@ -74,7 +74,7 @@ func (p *Prober) Probe() {
 func ping(host string, timeout time.Duration) string {
 	// Create the command to ping the host.
 
-	cmd := exec.Command("ping", "-c", "1", "-i", fmt.Sprintf("%.2f", timeout.Seconds()), host)
+	cmd := exec.Command("ping", "-c", "1", "-W", fmt.Sprintf("%.2f", timeout.Seconds()), host)
 	// Run the command.
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -107,7 +107,7 @@ func (p *Prober) ReportProgress() {
 
 func main() {
 	cidrAddr := flag.String("cidr", "", "The address range to ping in CIDR format, i.e. 1.2.0.0/16. Make sure only mask bits are set in the host portion of the address.")
-	numThreads := flag.Int("threads", 1000, "The number of threads to use when pinging.")
+	numThreads := flag.Int("threads", 500, "The number of threads to use when pinging.")
 	timeout := flag.Duration("timeout", 300*time.Millisecond, "The amount of time to wait for a response from a host.")
 	verbose := flag.Bool("verbose", false, "Whether or not to print the results of the ping.")
 	progressFrequency := flag.Duration("progress_freq", 1*time.Second, "How often to print the progress of the scan.")

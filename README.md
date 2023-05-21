@@ -15,5 +15,5 @@ The possible flags are:
 
 ## Example
 ```
-go run prober.go --cidr="34.128.0.0/10" --threads=1200
+go run prober.go --cidr="34.128.0.0/10" --threads=500
 ```
